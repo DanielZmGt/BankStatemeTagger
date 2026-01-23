@@ -2,6 +2,7 @@ import os
 import sys
 import glob
 import re
+import detector
 
 # Import Engines
 import hsbc_tagger
@@ -11,19 +12,6 @@ import santander
 import monex_tagger
 import db_tagger
 import ocr_utils
-
-def detect_bank(filename):
-    """
-    Heuristic to detect bank from filename.
-    """
-    upper = filename.upper()
-    if "HSBC" in upper: return "HSBC"
-    if "BANAMEX" in upper: return "BANAMEX"
-    if "BBVA" in upper: return "BBVA"
-    if "SANTANDER" in upper: return "SANTANDER"
-    if "MONEX" in upper: return "MONEX"
-    if "DB" in upper or "DEUTSCHE" in upper: return "DB"
-    return None
 
 def process_file(filename, bank, prefix):
     print(f"\n🚀 Processing: {filename} (Bank: {bank})")
@@ -81,8 +69,8 @@ def main():
     # 2. List and Select
     print("\nAvailable Files:")
     for idx, f in enumerate(pdfs):
-        bank = detect_bank(f)
-        bank_str = f"[{bank}]" if bank else "[?]"
+        bank, currency = detector.detect_bank_and_currency(f)
+        bank_str = f"[{bank}-{currency}]" if bank != "UNK" else "[?]"
         print(f"  {idx + 1}. {f}  {bank_str}")
         
     selection = input("\nEnter file number(s) to process (comma separated, or 'all'): ").strip()
@@ -105,9 +93,9 @@ def main():
     # 3. Process
     for idx in selected_indices:
         filename = pdfs[idx]
-        bank = detect_bank(filename)
+        bank, currency = detector.detect_bank_and_currency(filename)
         
-        if not bank:
+        if bank == "UNK":
             print(f"\nCould not detect bank for '{filename}'.")
             print("1. HSBC\n2. Banamex\n3. BBVA\n4. Santander\n5. Monex\n6. Deutsche Bank")
             choice = input("Select Bank Number: ").strip()
@@ -115,9 +103,10 @@ def main():
             bank = mapping.get(choice)
         
         if bank:
-            # Default prefix suggestion
-            prefix = input(f"\nEnter Prefix for {filename} (Default: {bank}_TX): ").strip()
-            if not prefix: prefix = f"{bank}_TX"
+            # Suggest prefix based on detection
+            default_prefix = f"{bank}_{currency}_TAG"
+            prefix = input(f"\nEnter Prefix for {filename} (Default: {default_prefix}): ").strip()
+            if not prefix: prefix = default_prefix
             
             process_file(filename, bank, prefix)
         else:

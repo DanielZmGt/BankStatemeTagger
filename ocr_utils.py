@@ -3,8 +3,34 @@ from pdf2image import convert_from_path
 from pypdf import PdfWriter, PdfReader
 from PIL import ImageEnhance
 import os
+import sys
 import io
 import fitz
+
+# Configuration for bundled binaries
+if getattr(sys, 'frozen', False):
+    # If the application is run as a bundle
+    base_path = sys._MEIPASS
+    
+    # Set Tesseract path
+    tesseract_cmd_path = os.path.join(base_path, 'bin', 'Tesseract-OCR', 'tesseract.exe')
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd_path
+    
+    # Set Poppler path for pdf2image
+    poppler_path = os.path.join(base_path, 'bin', 'poppler')
+else:
+    # Running in normal Python environment
+    # Check if we have local bin folder (e.g. during dev)
+    local_bin_tesseract = os.path.join(os.getcwd(), 'bin', 'Tesseract-OCR', 'tesseract.exe')
+    local_bin_poppler = os.path.join(os.getcwd(), 'bin', 'poppler')
+    
+    if os.path.exists(local_bin_tesseract):
+        pytesseract.pytesseract.tesseract_cmd = local_bin_tesseract
+        
+    if os.path.exists(local_bin_poppler):
+        poppler_path = local_bin_poppler
+    else:
+        poppler_path = None # Rely on PATH
 
 def clean_image(image):
     enhancer = ImageEnhance.Contrast(image)
@@ -18,7 +44,11 @@ def force_ocr(input_pdf_path):
     temp_output_path = input_pdf_path.replace(".pdf", "_OCR.pdf")
     
     try:
-        images = convert_from_path(input_pdf_path, dpi=300)
+        if poppler_path:
+            images = convert_from_path(input_pdf_path, dpi=300, poppler_path=poppler_path)
+        else:
+            images = convert_from_path(input_pdf_path, dpi=300)
+
         pdf_writer = PdfWriter()
 
         for i, image in enumerate(images):

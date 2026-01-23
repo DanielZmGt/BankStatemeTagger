@@ -12,6 +12,7 @@ import santander
 import monex_tagger
 import db_tagger
 import ocr_utils
+import detector
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -42,14 +43,25 @@ class App(ctk.CTk):
         self.file_label = ctk.CTkLabel(self.selection_frame, text="No files selected")
         self.file_label.grid(row=0, column=1, padx=10, pady=10)
 
+        # --- Configuration ---
+        self.config_frame = ctk.CTkFrame(self)
+        self.config_frame.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
+        
+        ctk.CTkLabel(self.config_frame, text="Tag Prefix Pattern:").pack(side="left", padx=10)
+        self.entry_prefix = ctk.CTkEntry(self.config_frame, width=200, placeholder_text="[BANK]_[CURR]_TAG")
+        self.entry_prefix.pack(side="left", padx=10)
+        self.entry_prefix.insert(0, "[BANK]_[CURR]_TAG")
+        
+        ctk.CTkLabel(self.config_frame, text="(Use [BANK], [CURR] as placeholders)").pack(side="left", padx=10)
+
         # --- Console Output ---
         self.textbox = ctk.CTkTextbox(self, width=600, height=200)
-        self.textbox.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        self.textbox.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
         self.textbox.insert("0.0", "Welcome! Select bank statements to begin.\n")
 
         # --- Action Buttons ---
         self.btn_process = ctk.CTkButton(self, text="Start Tagging", command=self.start_processing_thread, state="disabled")
-        self.btn_process.grid(row=3, column=0, padx=20, pady=20)
+        self.btn_process.grid(row=4, column=0, padx=20, pady=20)
 
         self.selected_files = []
 
@@ -65,26 +77,24 @@ class App(ctk.CTk):
             self.btn_process.configure(state="normal")
             self.log(f"Selected {len(files)} files.")
 
-    def detect_bank(self, filename):
-        upper = filename.upper()
-        if "HSBC" in upper: return "HSBC"
-        if "BANAMEX" in upper: return "BANAMEX"
-        if "BBVA" in upper: return "BBVA"
-        if "SANTANDER" in upper: return "SANTANDER"
-        if "MONEX" in upper: return "MONEX"
-        if "DB" in upper or "DEUTSCHE" in upper: return "DB"
-        return None
-
     def process_all(self):
         self.btn_process.configure(state="disabled")
         self.btn_select.configure(state="disabled")
         
+        pattern = self.entry_prefix.get().strip()
+        if not pattern: pattern = "[BANK]_[CURR]_TAG"
+        
         for f in self.selected_files:
             filename = os.path.basename(f)
-            bank = self.detect_bank(filename)
-            prefix = f"{bank if bank else 'TX'}_TAG"
             
-            self.log(f"\n🚀 Processing: {filename}...")
+            # Detect Bank and Currency
+            bank, currency = detector.detect_bank_and_currency(f)
+            
+            # Generate Prefix
+            prefix = pattern.replace("[BANK]", bank).replace("[CURR]", currency)
+            
+            self.log(f"\n🚀 Processing: {filename}")
+            self.log(f"   ℹ️  Bank: {bank}, Currency: {currency} -> Prefix: {prefix}")
             
             try:
                 if bank == "HSBC":
@@ -120,7 +130,7 @@ class App(ctk.CTk):
                     self.log("   ✅ Done.")
                 
                 else:
-                    self.log(f"   ⚠️ Could not detect bank for {filename}. Skipping.")
+                    self.log(f"   ⚠️ Could not identify supported bank for {filename}. (Detected: {bank})")
 
             except Exception as e:
                 self.log(f"   ❌ Error: {e}")
